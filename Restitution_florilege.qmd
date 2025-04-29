@@ -1,0 +1,157 @@
+---
+params:
+  structure_name: "Mairie de Montreuil"
+title: "Restitution florilège"
+format:
+  html:
+    embed-resources: true
+execute:
+  echo: false
+  message : false
+  warning : false
+  error : false
+---
+
+```{r}
+# Variables constantes
+structure_name = params$structure_name
+```
+
+```{r}
+source("programs/library.R")
+source("programs/requete_florilege.R")
+```
+
+```{r}
+df_florilege = df_florilege %>%
+  filter(session_date >= "2000-01-01") %>%
+  mutate(across(starts_with("taxon_count_"), as.integer)) %>%
+  mutate(year = strftime(as.Date(session_date), "%Y"),
+         year_factor_all = factor(year, levels = as.character(min(year, na.rm = T):max(year, na.rm = T))),
+         taxon_presence = rowSums(select(., starts_with("taxon_count_Q")), na.rm=TRUE),
+         taxon_presence_all = rowSums(select(., starts_with("taxon_count_")), na.rm=TRUE),
+         taxon_combine = if_else(is.na(taxon_nom_scientifique), taxon, taxon_nom_scientifique))
+
+df_florilege_struct = df_florilege %>%
+  filter(structure_nom == structure_name) %>%
+  mutate(year_factor = factor(year, levels = as.character(min(year, na.rm = T):max(year, na.rm = T))))
+```
+
+::: {.callout-tip title="Quelques chiffres de référence"}
+Remplissage de taxon_hors_quadrat : `{r} summary(as.factor(df_florilege$taxon_count_hors_quadrat))`
+:::
+
+```{r}
+nb_site = length(unique(df_florilege_struct$site_id))
+
+nb_saisisseur = length(unique(df_florilege_struct$user_id))
+
+# Nombre d'observateurs dans la structure -> compliqué
+
+all_tax = unique(c(df_florilege_struct$taxon_combine))
+```
+
+Nom de la structure : `r structure_name`
+
+Nombre d'espaces verts : `r nb_site`
+
+Nombre de saisisseurs : `r nb_saisisseur`
+
+Nombre d'espèces : `r length(unique(all_tax))` espèces différentes vues
+
+# Richesse
+
+## Annuelle
+
+```{r}
+df_richesse = df_florilege_struct %>%
+  filter(taxon_presence_all != 0) %>%
+  group_by(year, year_factor) %>%
+  summarise(richesse = length(unique(taxon_combine)), .groups = 'drop')
+df_richesse_5 = df_florilege_struct %>%
+  filter(taxon_presence > 5) %>%
+  group_by(year, year_factor) %>%
+  summarise(richesse = length(unique(taxon_combine)), .groups = 'drop')
+```
+
+```{r}
+ggplot(df_richesse, aes(x = year_factor, y = richesse)) +
+  geom_bar(fill = "#cd9047", stat = "identity") +
+  scale_x_discrete(drop = FALSE) +
+  theme_cowplot() +
+  xlab("Années") +
+  ylab("Richesse annuelle")
+```
+
+```{r}
+ggplot(df_richesse_5, aes(x = year_factor, y = richesse)) +
+  geom_bar(fill = "#cd9047", stat = "identity") +
+  scale_x_discrete(drop = FALSE) +
+  theme_cowplot() +
+  xlab("Années") +
+  ylab("Richesse annuelle \n(au moins 50% des quadrats)")
+```
+
+## Par site
+
+```{r}
+df_richesse_site = df_florilege_struct %>%
+  filter(taxon_presence_all != 0) %>%
+  group_by(year, year_factor, site_id, site) %>%
+  summarise(richesse = length(unique(taxon_combine)), .groups = 'drop') %>%
+  group_by(year) %>%
+  mutate(rich_tot = sum(richesse),
+         rich_moy = mean(richesse)) %>%
+  select(year, year_factor, rich_moy) %>%
+  unique()
+```
+
+```{r}
+ggplot(df_richesse_site, aes(x = year_factor, y = rich_moy)) +
+  geom_bar(fill = "#DDA3B2", stat = "identity") +
+  scale_x_discrete(drop = FALSE) +
+  theme_cowplot() +
+  xlab("Années") +
+  ylab("Richesse moyenne par site")
+```
+
+
+```{r}
+a = df_florilege_struct %>%
+  group_by(taxon_combine) %>%
+  summarise(nobs = n(), sum_freq = sum(taxon_presence), .groups = 'drop') %>%
+  mutate(freq_moy = sum_freq/nobs)
+```
+
+
+
+```{r}
+a = df_florilege %>%
+  select(site_id, year_factor) %>%
+  unique()
+b = df_florilege %>%
+  select(session_id, year_factor) %>%
+  unique()
+
+ggplot(a, aes(x = year_factor)) +
+  geom_bar(fill = "#DDA3B2") +
+  scale_x_discrete(drop = FALSE) +
+  theme_cowplot() +
+  xlab("Années") +
+  ylab("Richesse moyenne par site") +
+  ylim(0, 250)
+
+ggplot(b, aes(x = year_factor)) +
+  geom_bar(fill = "#11e866") +
+  scale_x_discrete(drop = FALSE) +
+  theme_cowplot() +
+  xlab("Années") +
+  ylab("Richesse moyenne par site") +
+  ylim(0, 250)
+
+```
+
+
+
+
+
