@@ -1,0 +1,257 @@
+---
+params:
+  structure_name: "Mairie de Montreuil"
+title: "Restitution florilège"
+format:
+  dashboard:
+    embed-resources: true
+execute:
+  echo: false
+  message : false
+  warning : false
+  error : false
+---
+
+# Chiffres clés
+
+## 1
+
+```{r}
+# Variables constantes
+structure_name = params$structure_name
+```
+
+```{r}
+source("programs/library.R")
+source("programs/df_florileges.R")
+```
+
+```{r}
+nb_site = length(unique(df_florileges_struct$site_id))
+
+nb_saisisseur = length(unique(df_florileges_struct$user_id))
+
+nb_sp_liste = length(na.omit(unique(df_florileges_struct$taxon_nom_scientifique)))
+
+# Nombre d'observateurs dans la structure -> compliqué
+
+all_tax = unique(c(df_florileges_struct$taxon_combine))
+```
+
+Nom de la structure : `r structure_name`
+
+Nombre d'espaces verts : `r nb_site`
+
+Nombre de saisisseurs : `r nb_saisisseur`
+
+Nombre d'espèces : `r length(unique(all_tax))` espèces différentes vues
+
+## 2
+
+### A
+
+<div style="height:250px;">
+```{r}
+#| title: Nombre de taxons de la liste florilèges observés
+
+gauge(value = nb_sp_liste, min = 0, max = 60)
+```
+</div>
+
+### B
+
+```{r}
+lst_florileges = sort(unique(df_florileges$taxon_nom_scientifique))
+
+lst_structure = sort(unique(df_florileges_struct$taxon))
+lst_structure = lst_structure[which(!(lst_structure %in% lst_florileges))]
+
+df_taxon_add = df_florileges %>%
+  filter(!(taxon %in% lst_florileges), !is.na(structure_nom)) %>%
+  group_by(structure_nom) %>%
+  summarise(n_tax = n_distinct(taxon))
+
+```
+
+::: {.valuebox icon="eye" color="#ced600"}
+Nombre d'espèces hors liste vues :
+
+`r length(lst_structure)`
+
+Moyenne nationale : `r round(mean(df_taxon_add$n_tax), 2)`
+:::
+
+# Repartition des taxons vus
+
+```{r}
+df_sunburst <- data.frame()
+all_levels <- c("CLASSE", "ORDRE", "FAMILLE", "SOUS_FAMILLE", "TRIBU")
+
+for (i in 2:length(all_levels)) {
+  temp <- df_obs_taxon %>%
+    group_by(across(all_levels[1:i])) %>%
+    summarise(nobs = sum(nobs), .groups = "drop") %>%
+    mutate(parent = .data[[all_levels[i - 1]]],
+           label = .data[[all_levels[i]]]) %>%
+    select(parent, label, nobs)
+  
+  df_sunburst <- bind_rows(df_sunburst, temp)
+}
+
+df_sunburst <- bind_rows(
+  data.frame(parent = "", label = "Equisetopsida", nobs = sum(df_obs_taxon$nobs)),
+  df_sunburst
+)
+```
+
+```{r}
+plot_ly(labels = df_sunburst$label,
+              parents = df_sunburst$parent,
+              values = df_sunburst$nobs,
+              type = 'sunburst',
+              branchvalues = 'total')
+```
+
+
+# Richesse {orientation="columns"}
+
+::::panel-tabset
+
+## Par année
+
+### Annuelle
+
+```{r}
+ggplot(df_richesse, aes(x = session_year_factor, y = richesse)) +
+  geom_bar(fill = "#cd9047", stat = "identity") +
+  scale_x_discrete(drop = FALSE) +
+  theme_cowplot() +
+  xlab("Années") +
+  ylab("Richesse annuelle")
+```
+
+### Par site
+
+```{r}
+ggplot(df_richesse_site, aes(x = session_year_factor, y = rich_moy)) +
+  geom_bar(fill = "#DDA3B2", stat = "identity") +
+  scale_x_discrete(drop = FALSE) +
+  theme_cowplot() +
+  xlab("Années") +
+  ylab("Richesse moyenne par site")
+```
+
+## Cumulée
+
+:::panel-tabset
+```{r}
+
+df_site = df_florileges_struct %>% filter(site_id == 987)
+
+```
+:::
+
+::::
+
+# Fréquences
+
+```{r}
+df_taxon_freq_struct = df_florileges_struct %>%
+  group_by(taxon_combine) %>%
+  summarise(nobs = n(), sum_freq = sum(taxon_presence), n_session_year = n_distinct(session_year),
+            .groups = 'drop') %>%
+  mutate(freq_moy = sum_freq/nobs,
+         freq_temp = n_session_year/length(unique(df_florileges_struct$session_year))) %>%
+  left_join(ordre_taxonomique, by = c("taxon_combine" = "LB_NOM")) 
+```
+
+```{r}
+ggplotly(ggplot(data = df_taxon_freq_struct,
+              mapping = aes(x = freq_moy, y = freq_temp, color = ORDRE,
+                            text = taxon_combine)) +
+    geom_point(size = 2) +
+    # scale_colour_manual(values = col_vec) +
+    xlab("Fréquence moyenne") +
+    ylab("Fréquence temporelle") +
+    expand_limits(x = 0, y = 0) +
+    theme_cowplot(), tooltip = "text")
+```
+
+
+# Participation
+
+```{r}
+
+df_site_tempo_line = df_florileges_struct %>%
+  mutate(session_year = as.integer(session_year)) %>%
+  arrange(session_date) %>%
+  select(site_id, site, session_year) %>%
+  unique() %>%
+  group_by(site_id, site) %>%
+  mutate(index = cur_group_id(),
+         index_y = index+cumsum(c(TRUE, diff(session_year) != 1)),
+         name = paste0(site_id, "_", str_sub(site, 1, 20)),
+         groupe = paste0(site_id, index_y)) %>%
+  arrange(session_year)
+
+df_site_point = df_site_tempo_line %>%
+  group_by(groupe) %>%
+  filter(session_year == min(session_year) | session_year == max(session_year)) %>%
+  ungroup()
+
+ggplot(df_site_tempo_line, aes(x = session_year, y = reorder(name, session_year) )) +
+    geom_line(aes(group = groupe), color = "#aa3839", linewidth = 0.6) +
+    geom_point(df_site_point, mapping = aes(x = session_year, y = name),
+               color = "#aa3839", size = 1.5) +
+    # scale_x_continuous(limits = c(min(as.integer(vec_limits_x), na.rm = T)-1,
+    #                               max(as.integer(vec_limits_x), na.rm = T)+1)) +
+    theme_minimal() + xlab("Années") + ylab("Sites")
+  
+```
+
+# Wouah c'est trop beau
+
+:::panel-tabset
+
+```{r}
+#| results: asis
+#| fig-width: 6
+#| fig-height: 4
+
+for (id_site in unique(df_radar_struct$site_id)) {
+  site_name = unique(df_radar_struct %>% filter(site_id == id_site) %>% pull(site) )
+  cat(sprintf("\n\n## %s\n\n", site_name))
+  
+  df_radar_site = df_radar_struct %>% filter(site_id == id_site)
+  
+  # Richesse
+  sp_flori = unique(df_radar_site$taxon_nom_scientifique)
+  sp_flori = sp_flori[!is.na(sp_flori)]
+  
+  # Typicité prairie
+  typicite_prairie = length(which(str_detect(df_radar_site$HABITAT, "prairie")))
+  
+  site_nitro = mean(df_radar_site$Nitrophilie, na.rm = T)
+  site_entomo = mean(df_radar_site$BioticVector, na.rm = T)
+  site_vivace = mean(df_radar_site$Vivace, na.rm = T)
+  
+  df_graph_radar = data.frame(Nitrophilie = c(max_nitro, min_nitro, site_nitro),
+                              Entomophilie = c(max_entomo, min_entomo, site_entomo),
+                              Vivace = c(max_vivace, min_vivace, site_vivace),
+                              Richesse = c(60, 0, length(sp_flori)),
+                              `Typicité prairie` = c(1, 0, typicite_prairie/nrow(df_radar_site)))
+  
+  op <- par(mar = c(1, 2, 2, 1))
+  radarchart(df_graph_radar, 
+             pcol = "#00AFBB", pfcol = scales::alpha("#00AFBB", 0.3),
+             plwd = 2, plty = 1,
+             cglty = 1, cglwd = 0.8,
+             cglcol = "grey")
+  par(op)
+
+}
+```
+
+:::
+
+

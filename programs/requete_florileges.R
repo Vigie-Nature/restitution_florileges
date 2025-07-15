@@ -38,24 +38,24 @@ is_intranet <- function(url = "https://virtualianet.mnhn.fr/") {
 # -----------------------------------------------
 
 
-if (!file.exists("data/rdata/df_florilege.rds") & !is_intranet()) {
+if (!file.exists("data/rdata/df_florileges.rds") & !is_intranet()) {
   stop("Le fichier n'existe pas et ne peut pas être créé.")
-}else if ((!file.exists("data/rdata/df_florilege.rds") |                                 # Si le fichier n'existe pas OU
+}else if ((!file.exists("data/rdata/df_florileges.rds") |                                 # Si le fichier n'existe pas OU
           (strftime(Sys.Date(), "%A") == "lundi" &                                     #  [que la date du jour est un lundi ET
-           Sys.Date()-as.Date(file.info("data/rdata/df_florilege.rds")$ctime) > 5)) &    #   que le fichier a plus de 5 jours]
+           Sys.Date()-as.Date(file.info("data/rdata/df_florileges.rds")$ctime) > 5)) &    #   que le fichier a plus de 5 jours]
           is_intranet()) {    
   # Lecture depuis la base mosaic
-  df_florilege = import_from_mosaic(query = read_sql_query("sql/florilege_export_a_plat_standard.sql"),
+  df_florileges = import_from_mosaic(query = read_sql_query("sql/florilege_export_a_plat_standard.sql"),
                                   database_name = "espaces_verts")
   
   # On sauvegarde si on ne se trouve pas sur le serveur gitlab
   if (Sys.getenv("CI") != "true") {
     # Sauvegarde du df en format RDS
-    saveRDS(object = df_florilege, file = "data/rdata/df_florilege.rds")
+    saveRDS(object = df_florileges, file = "data/rdata/df_florileges.rds")
   }
   
 }else{
   # Lecture du fichier RDS
-  df_florilege = readRDS("data/rdata/df_florilege.rds")
+  df_florileges = readRDS("data/rdata/df_florileges.rds")
 }
 

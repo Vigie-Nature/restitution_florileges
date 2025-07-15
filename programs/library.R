@@ -1,9 +1,12 @@
 # R 4.4.2
 library(cowplot) # 1.1.3
 suppressWarnings(suppressMessages(library(dplyr))) # 1.1.4
+suppressWarnings(suppressMessages(library(flexdashboard))) # 0.6.2
+library(fmsb) # 0.7.6
 library(ggplot2) # 3.5.1
 suppressWarnings(suppressMessages(library(here))) # 1.0.1
 suppressWarnings(suppressMessages(library(httr))) # 1.4.7
-library(jsonlite)
+library(jsonlite) # 1.8.9
+suppressWarnings(suppressMessages(library(plotly))) # 4.10.4
 suppressWarnings(suppressMessages(library(RMySQL))) # 0.10.29
 library(stringr) # 1.5.1
