@@ -4,7 +4,9 @@ params:
 title: "Restitution florilège"
 format:
   dashboard:
+    scrolling: true
     embed-resources: true
+    css: styles.css
 execute:
   echo: false
   message : false
@@ -12,9 +14,9 @@ execute:
   error : false
 ---
 
-# Chiffres clés
+# Chiffres clés {orientation="columns"}
 
-## 1
+## Colonne 1
 
 ```{r}
 # Variables constantes
@@ -24,19 +26,10 @@ structure_name = params$structure_name
 ```{r}
 source("programs/library.R")
 source("programs/df_florileges.R")
+source("programs/function_graphics.R")
 ```
 
-```{r}
-nb_site = length(unique(df_florileges_struct$site_id))
-
-nb_saisisseur = length(unique(df_florileges_struct$user_id))
-
-nb_sp_liste = length(na.omit(unique(df_florileges_struct$taxon_nom_scientifique)))
-
-# Nombre d'observateurs dans la structure -> compliqué
-
-all_tax = unique(c(df_florileges_struct$taxon_combine))
-```
+### Ligne 1-A
 
 Nom de la structure : `r structure_name`
 
@@ -46,9 +39,7 @@ Nombre de saisisseurs : `r nb_saisisseur`
 
 Nombre d'espèces : `r length(unique(all_tax))` espèces différentes vues
 
-## 2
-
-### A
+### Ligne 2-A
 
 <div style="height:250px;">
 ```{r}
@@ -58,20 +49,7 @@ gauge(value = nb_sp_liste, min = 0, max = 60)
 ```
 </div>
 
-### B
-
-```{r}
-lst_florileges = sort(unique(df_florileges$taxon_nom_scientifique))
-
-lst_structure = sort(unique(df_florileges_struct$taxon))
-lst_structure = lst_structure[which(!(lst_structure %in% lst_florileges))]
-
-df_taxon_add = df_florileges %>%
-  filter(!(taxon %in% lst_florileges), !is.na(structure_nom)) %>%
-  group_by(structure_nom) %>%
-  summarise(n_tax = n_distinct(taxon))
-
-```
+### Ligne 3-A
 
 ::: {.valuebox icon="eye" color="#ced600"}
 Nombre d'espèces hors liste vues :
@@ -81,11 +59,59 @@ Nombre d'espèces hors liste vues :
 Moyenne nationale : `r round(mean(df_taxon_add$n_tax), 2)`
 :::
 
-# Repartition des taxons vus
+### Ligne 4-A
+
+::: {.callout-note collapse="true" icon=false title="Tableau des espèces vues lors de la dernière année d'observation"}
+
+```{r}
+DT::datatable(df_tb,
+              class = 'cell-border stripe',
+              extensions = "Buttons",
+              options = list(buttons = c("copy", "csv"),
+                            dom = 'Bfrtip'),
+              rownames = FALSE)
+```
+:::
+
+## Colonne B
+
+### Ligne 1-B
+
+```{r}
+#| title: Familles les plus observées dans les sessions
+#| fig-width: 5
+#| fig-height: 5
+
+graph_donut(df_donut = df_top_5, vec_col = df_top_5$couleur, fill = "FAMILLE", txtlab = "FAMILLE")
+```
+
+
+### Ligne 2-B
+
+```{r}
+#| title: Proportion des relevés de chaque famille parmi toute les sessions d'observations de la structure
+#| class-output: plotly_output
+
+couleur_esp = rep("#c0cdf5", nrow(df_tax_ab))
+couleur_esp[which(df_tax_ab$FAMILLE %in% lst_top_5)] = couleurs_top_5[1:length(lst_top_5)]
+
+df_tax_ab = df_tax_ab %>%
+  mutate(couleur = couleur_esp)
+
+gg_histo_plotly(df_hp = df_tax_ab, x = "FAMILLE", y = "prop_pres", fill = "FAMILLE",
+                limits = df_tax_ab$FAMILLE, couleur = df_tax_ab$couleur,
+                percent = TRUE, ytxt = "Proportion d'observations", title = "") %>%
+  config(modeBarButtonsToRemove = c("select2d", "lasso2d", "autoscale2d",
+                                    "zoomOut2d", "zoomIn2d", "hoverClosestCartesian",
+                                    "hoverCompareCartesian"),
+         displaylogo = FALSE)
+```
+
+# Repartition des taxons  {scrolling=FALSE}
 
 ```{r}
 df_sunburst <- data.frame()
-all_levels <- c("CLASSE", "ORDRE", "FAMILLE", "SOUS_FAMILLE", "TRIBU")
+all_levels <- c("REGNE", "FAMILLE", "taxon_combine")
 
 for (i in 2:length(all_levels)) {
   temp <- df_obs_taxon %>%
@@ -99,7 +125,7 @@ for (i in 2:length(all_levels)) {
 }
 
 df_sunburst <- bind_rows(
-  data.frame(parent = "", label = "Equisetopsida", nobs = sum(df_obs_taxon$nobs)),
+  data.frame(parent = "", label = "Plantae", nobs = sum(df_obs_taxon$nobs)),
   df_sunburst
 )
 ```
@@ -115,19 +141,23 @@ plot_ly(labels = df_sunburst$label,
 
 # Richesse {orientation="columns"}
 
-::::panel-tabset
-
 ## Par année
+
+:::panel-tabset
 
 ### Annuelle
 
 ```{r}
-ggplot(df_richesse, aes(x = session_year_factor, y = richesse)) +
-  geom_bar(fill = "#cd9047", stat = "identity") +
+
+ggplot(df_richesse, aes(x = session_year_factor, fill = is.liste)) +
+  geom_bar() +
+  scale_fill_manual(breaks = c("liste", "hors liste"), values = c("#cd9047", "#8D6A9F")) +
   scale_x_discrete(drop = FALSE) +
   theme_cowplot() +
   xlab("Années") +
-  ylab("Richesse annuelle")
+  ylab("Richesse annuelle") +
+  labs(fill = "Liste Florilèges")
+
 ```
 
 ### Par site
@@ -135,81 +165,80 @@ ggplot(df_richesse, aes(x = session_year_factor, y = richesse)) +
 ```{r}
 ggplot(df_richesse_site, aes(x = session_year_factor, y = rich_moy)) +
   geom_bar(fill = "#DDA3B2", stat = "identity") +
+  # geom_point(data = df_richesse_site_reg, mapping = aes(x = session_year_factor_all, y = rich_moy)) +
+  geom_smooth(data = df_richesse_site_reg, mapping = aes(x = session_year_factor_all, y = rich_moy, group = 1),
+              color = "#ff547e") +
   scale_x_discrete(drop = FALSE) +
   theme_cowplot() +
   xlab("Années") +
   ylab("Richesse moyenne par site")
 ```
 
+:::
+
+### Référentiel
+
+```{r}
+#| title: Pourcentage des sessions réalisées par la structure par rapport aux sessions effectuées dans la région chaque année
+
+ggplot(df_session, aes(x = as.integer(session_year), fill = structure)) +
+    geom_bar(position = "fill")+
+    scale_fill_manual(values=c("#ED6A5A", "#D0E3CC"), breaks=c("Structure", "Autres"))+
+    ylab("% de sessions") +
+    xlab("Années") +
+    labs(fill = "Structure") +
+    theme_cowplot()
+```
+
+
 ## Cumulée
 
 :::panel-tabset
+
+### Liste Florilèges uniquement
+
 ```{r}
-
-df_site = df_florileges_struct %>% filter(site_id == 987)
-
+ggplot(df_rich_cumul_lst_flori, aes(x = as.integer(min_year), y = rich_cumul)) +
+  geom_line(color = "#90d3ff") +
+  geom_point(color = "#1aa4ff") +
+  geom_hline(yintercept = 60, linetype = "dashed", color = "#F25757") +
+  ylab("Richesse cumulée") +
+  xlab("Années") +
+  ylim(0, NA) +
+  theme_cowplot()
 ```
+
+### Liste Florilèges + espèces hors liste
+
+```{r}
+ggplot(df_rich_cumul_all, aes(x = as.integer(min_year), y = rich_cumul)) +
+  geom_line(color = "#90d3ff") +
+  geom_point(color = "#1aa4ff") +
+  ylab("Richesse cumulée") +
+  xlab("Années") +
+  ylim(0, NA) +
+  scale_x_continuous(limits = c(min(as.integer(df_florileges_presence_struct$session_year), na.rm = T)-1,
+                                  max(as.integer(df_florileges_presence_struct$session_year), na.rm = T)+1)) +
+  theme_cowplot()
+```
+
 :::
-
-::::
-
-# Fréquences
-
-```{r}
-df_taxon_freq_struct = df_florileges_struct %>%
-  group_by(taxon_combine) %>%
-  summarise(nobs = n(), sum_freq = sum(taxon_presence), n_session_year = n_distinct(session_year),
-            .groups = 'drop') %>%
-  mutate(freq_moy = sum_freq/nobs,
-         freq_temp = n_session_year/length(unique(df_florileges_struct$session_year))) %>%
-  left_join(ordre_taxonomique, by = c("taxon_combine" = "LB_NOM")) 
-```
-
-```{r}
-ggplotly(ggplot(data = df_taxon_freq_struct,
-              mapping = aes(x = freq_moy, y = freq_temp, color = ORDRE,
-                            text = taxon_combine)) +
-    geom_point(size = 2) +
-    # scale_colour_manual(values = col_vec) +
-    xlab("Fréquence moyenne") +
-    ylab("Fréquence temporelle") +
-    expand_limits(x = 0, y = 0) +
-    theme_cowplot(), tooltip = "text")
-```
-
 
 # Participation
 
 ```{r}
-
-df_site_tempo_line = df_florileges_struct %>%
-  mutate(session_year = as.integer(session_year)) %>%
-  arrange(session_date) %>%
-  select(site_id, site, session_year) %>%
-  unique() %>%
-  group_by(site_id, site) %>%
-  mutate(index = cur_group_id(),
-         index_y = index+cumsum(c(TRUE, diff(session_year) != 1)),
-         name = paste0(site_id, "_", str_sub(site, 1, 20)),
-         groupe = paste0(site_id, index_y)) %>%
-  arrange(session_year)
-
-df_site_point = df_site_tempo_line %>%
-  group_by(groupe) %>%
-  filter(session_year == min(session_year) | session_year == max(session_year)) %>%
-  ungroup()
-
 ggplot(df_site_tempo_line, aes(x = session_year, y = reorder(name, session_year) )) +
     geom_line(aes(group = groupe), color = "#aa3839", linewidth = 0.6) +
     geom_point(df_site_point, mapping = aes(x = session_year, y = name),
                color = "#aa3839", size = 1.5) +
-    # scale_x_continuous(limits = c(min(as.integer(vec_limits_x), na.rm = T)-1,
-    #                               max(as.integer(vec_limits_x), na.rm = T)+1)) +
+    scale_x_continuous(limits = c(min(as.integer(df_florileges$session_year), na.rm = T)-1,
+                                  max(as.integer(df_florileges$session_year), na.rm = T)+1),
+                       sec.axis = dup_axis()) +
     theme_minimal() + xlab("Années") + ylab("Sites")
   
 ```
 
-# Wouah c'est trop beau
+# Diagramme radar
 
 :::panel-tabset
 
@@ -235,18 +264,25 @@ for (id_site in unique(df_radar_struct$site_id)) {
   site_entomo = mean(df_radar_site$BioticVector, na.rm = T)
   site_vivace = mean(df_radar_site$Vivace, na.rm = T)
   
-  df_graph_radar = data.frame(Nitrophilie = c(max_nitro, min_nitro, site_nitro),
-                              Entomophilie = c(max_entomo, min_entomo, site_entomo),
-                              Vivace = c(max_vivace, min_vivace, site_vivace),
-                              Richesse = c(60, 0, length(sp_flori)),
-                              `Typicité prairie` = c(1, 0, typicite_prairie/nrow(df_radar_site)))
+  df_graph_radar = data.frame(Nitrophilie = c(max_nitro, min_nitro, reg_nitro, site_nitro),
+                              Entomophilie = c(max_entomo, min_entomo, reg_entomo, site_entomo),
+                              Vivace = c(max_vivace, min_vivace, reg_vivace, site_vivace),
+                              Richesse = c(60, 0, reg_sp_flori, length(sp_flori)),
+                              `Typicité prairie` = c(1, 0, reg_typicite_prairie, 
+                                                     typicite_prairie/nrow(df_radar_site)))
+  rownames(df_graph_radar) = c("Max", "Min", "Région", "Site")
   
   op <- par(mar = c(1, 2, 2, 1))
   radarchart(df_graph_radar, 
-             pcol = "#00AFBB", pfcol = scales::alpha("#00AFBB", 0.3),
-             plwd = 2, plty = 1,
+             pcol = c("#000000", "#00AFBB"), pfcol = scales::alpha(c("#FFD166", "#00AFBB"), c(0, 0.2)),
+             plwd = c(3, 3), plty = c("dashed", "solid"),
              cglty = 1, cglwd = 0.8,
-             cglcol = "grey")
+             cglcol = "grey", vlabels = colnames(df_graph_radar), vlcex = 0.7)
+  legend(-2,0,
+       legend=c("Région", "Site"),
+       pch=19,
+       col=c("#000000", "#00AFBB"),
+       lty=c(2, 1))
   par(op)
 
 }
